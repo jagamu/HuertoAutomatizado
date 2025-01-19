@@ -1,7 +1,9 @@
-../Core/Src/main.c:63:6:HAL_GPIO_EXTI_Callback	2
-../Core/Src/main.c:71:6:check_humidity_and_control_pump	6
-../Core/Src/main.c:99:5:main	1
-../Core/Src/main.c:146:6:SystemClock_Config	3
-../Core/Src/main.c:193:13:MX_ADC1_Init	3
-../Core/Src/main.c:245:13:MX_GPIO_Init	1
-../Core/Src/main.c:287:6:Error_Handler	1
+../Core/Src/main.c:64:6:HAL_GPIO_EXTI_Callback	2
+../Core/Src/main.c:72:6:check_humidity_and_control_pump	6
+../Core/Src/main.c:95:6:update_lcd	2
+../Core/Src/main.c:125:5:main	1
+../Core/Src/main.c:179:6:SystemClock_Config	3
+../Core/Src/main.c:226:13:MX_ADC1_Init	3
+../Core/Src/main.c:278:13:MX_I2C1_Init	2
+../Core/Src/main.c:312:13:MX_GPIO_Init	1
+../Core/Src/main.c:354:6:Error_Handler	1

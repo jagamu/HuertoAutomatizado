@@ -57,6 +57,17 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Sensor_capacitivo_adc1_Pin GPIO_PIN_0
+#define Sensor_capacitivo_adc1_GPIO_Port GPIOA
+#define LCD_SCL_I2C1_Pin GPIO_PIN_6
+#define LCD_SCL_I2C1_GPIO_Port GPIOB
+#define LCD_SDA_I2C1_Pin GPIO_PIN_7
+#define LCD_SDA_I2C1_GPIO_Port GPIOB
+#define BOTON_BOMBA_EXTI8_Pin GPIO_PIN_8
+#define BOTON_BOMBA_EXTI8_GPIO_Port GPIOB
+#define BOTON_BOMBA_EXTI8_EXTI_IRQn EXTI9_5_IRQn
+#define RELE_GPIO_Pin GPIO_PIN_9
+#define RELE_GPIO_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

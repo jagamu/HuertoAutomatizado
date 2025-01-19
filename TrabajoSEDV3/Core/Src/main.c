@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+#include "liquidcrystal_i2c.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -41,19 +41,20 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
-uint8_t button_state = 0;  // Estado del botón
-uint8_t pump_state = 0;    // Estado de la bomba
-uint32_t sensor_value = 0;       // Valor leído del sensor
-uint32_t humidity_threshold = 2000; // Umbral de humedad (ajusta según tu sensor)
+I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
-
+uint8_t button_state = 0; //Estado del botón
+uint8_t pump_state = 0; //Estado de la bomba
+uint32_t sensor_value = 0; //Valor leído del sensor
+uint32_t humidity_threshold = 2000; //Umbral de humedad
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -77,7 +78,7 @@ void check_humidity_and_control_pump() {
     HAL_ADC_Stop(&hadc1);
 
     // Comparar con el umbral y actualizar el estado de la bomba
-    if (sensor_value < humidity_threshold || button_state == 1) { // Si la humedad es baja
+    if (sensor_value > humidity_threshold || button_state == 1) { // Si la humedad es baja
         pump_state = 1; // Activar la bomba
     } else if (!button_state) { // Si el botón no está activo
         pump_state = 0; // Desactivar la bomba
@@ -85,11 +86,36 @@ void check_humidity_and_control_pump() {
 
     // Controlar el relé según el estado de la bomba
     if (pump_state) {
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET); // Activar relé (lógica inversa)
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // Activar relé (lógica inversa)
     } else {
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // Desactivar relé
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET); // Desactivar relé
     }
 }
+
+void update_lcd() {
+    char line1[16]; // Línea 1 del LCD
+    char line2[16]; // Línea 2 del LCD
+    uint32_t sensor_percent = 162.2587- 0.0415*sensor_value;
+    // Mostrar estado de la bomba
+    if (pump_state) {
+        snprintf(line1, sizeof(line1), "Bomba: Activada");
+    	//line1[]="Bomba: Activada";
+    } else {
+        snprintf(line1, sizeof(line1), "Bomba: Desactivada");
+    	//line1[]="Bomba: Desactivada";
+    }
+
+    // Mostrar valor del sensor de humedad
+   snprintf(line2, sizeof(line2), "Humedad: %lu %", sensor_percent);
+
+    // Actualizar el LCD
+    HD44780_Clear(); // Limpia el LCD
+    HD44780_SetCursor(0, 0); // Línea 1
+    HD44780_PrintStr(line1);
+    HD44780_SetCursor(0, 1); // Línea 2
+    HD44780_PrintStr(line2);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -122,8 +148,14 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ADC1_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-
+  HD44780_Init(2); // Inicializa el LCD con 2 líneas
+  HD44780_Clear(); // Limpia el LCD
+  HD44780_SetCursor(0, 0);   // Coloca el cursor en la primera línea
+  HD44780_PrintStr("Sistema Iniciado"); // Mensaje inicial
+  //HAL_Delay(2000); // Pausa para que el mensaje sea visible
+  //HD44780_Clear(); // Limpia el LCD después del mensaje inicial
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -131,8 +163,9 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  check_humidity_and_control_pump();
-	  HAL_Delay(100); // Pequeño retraso para evitar saturar el sistema
+	  check_humidity_and_control_pump(); // Controla la bomba
+	  update_lcd(); // Actualiza el LCD
+	  HAL_Delay(500); // Pausa para evitar actualizaciones muy rápidas
 
     /* USER CODE BEGIN 3 */
   }
@@ -238,6 +271,40 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -253,20 +320,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(RELE_GPIO_GPIO_Port, RELE_GPIO_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PB8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  /*Configure GPIO pin : BOTON_BOMBA_EXTI8_Pin */
+  GPIO_InitStruct.Pin = BOTON_BOMBA_EXTI8_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(BOTON_BOMBA_EXTI8_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  /*Configure GPIO pin : RELE_GPIO_Pin */
+  GPIO_InitStruct.Pin = RELE_GPIO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(RELE_GPIO_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
