@@ -18,10 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "liquidcrystal_i2c.h"
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "bmp280.h"
+#include "liquidcrystal_i2c.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,13 +44,22 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+
 I2C_HandleTypeDef hi2c1;
+I2C_HandleTypeDef hi2c2;
 
 /* USER CODE BEGIN PV */
 uint8_t button_state = 0; //Estado del botón
 uint8_t pump_state = 0; //Estado de la bomba
 uint32_t sensor_value = 0; //Valor leído del sensor
 uint32_t humidity_threshold = 2000; //Umbral de humedad
+BMP280_HandleTypedef bmp280;
+float pressure, temperature;
+float humidity=0; //No usamos la humedad en nuestro sensor ambiental
+uint16_t size_bmp;
+uint8_t data_bmp[256];
+uint32_t last_lcd_update = 0;
+uint32_t last_bmp_update = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -55,6 +67,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_I2C2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -62,11 +75,16 @@ static void MX_I2C1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-    if (GPIO_Pin == GPIO_PIN_8) { // Interrupción del botón
-        button_state = !button_state; // Alterna el estado del botón
-        pump_state = button_state;   // Actualiza el estado de la bomba manualmente
-        //HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_9); // Prueba: Alterna un LED
-    }
+	  uint32_t last_interrupt_time = 0;
+	  uint32_t current_time = HAL_GetTick();
+
+	    if (GPIO_Pin == GPIO_PIN_8 && (current_time - last_interrupt_time > 10)) {
+	        button_state = !button_state;  // Alterna el estado
+	        pump_state = button_state;    // Actualiza la bomba
+	        //HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12); // Alterna un LED de prueba
+	        last_interrupt_time = current_time;
+	    }
+
 }
 
 void check_humidity_and_control_pump() {
@@ -95,18 +113,17 @@ void check_humidity_and_control_pump() {
 void update_lcd() {
     char line1[16]; // Línea 1 del LCD
     char line2[16]; // Línea 2 del LCD
-    uint32_t sensor_percent = 162.2587- 0.0415*sensor_value;
+    uint32_t sensor_percent = 138.6228 - 0.0322 * sensor_value; // Conversión del valor del sensor a porcentaje
+
     // Mostrar estado de la bomba
     if (pump_state) {
-        snprintf(line1, sizeof(line1), "Bomba: Activada");
-    	//line1[]="Bomba: Activada";
+        snprintf(line1, sizeof(line1), "B: ON Temp:%.1fC", temperature);
     } else {
-        snprintf(line1, sizeof(line1), "Bomba: Desactivada");
-    	//line1[]="Bomba: Desactivada";
+        snprintf(line1, sizeof(line1), "B:OFF Temp:%.1fC", temperature);
     }
 
-    // Mostrar valor del sensor de humedad
-   snprintf(line2, sizeof(line2), "Humedad: %lu %", sensor_percent);
+    // Mostrar valor del sensor de humedad y presión
+    snprintf(line2, sizeof(line2), "H:%lu%% P:%.1f", sensor_percent, pressure / 100);
 
     // Actualizar el LCD
     HD44780_Clear(); // Limpia el LCD
@@ -116,6 +133,29 @@ void update_lcd() {
     HD44780_PrintStr(line2);
 }
 
+void init_bmp280() {
+	bmp280_init_default_params(&bmp280.params);
+		bmp280.addr = BMP280_I2C_ADDRESS_0;
+		bmp280.i2c = &hi2c2;
+
+		while (!bmp280_init(&bmp280, &bmp280.params)) {
+			size_bmp = sprintf((char *)data_bmp, "BMP280 initialization failed\n");
+			HAL_Delay(500);
+		}
+
+		size_bmp = sprintf((char *)data_bmp, "BMP280 found \n");
+}
+
+void read_bmp280 () {
+	HAL_Delay(100);
+	while (!bmp280_read_float(&bmp280,&temperature,&pressure,&humidity)) {
+		size_bmp = sprintf((char *)data_bmp,"Temperature/pressure reading failed\n");
+		HAL_Delay(500);
+		}
+
+	size_bmp = sprintf((char *)data_bmp,"Pressure: %.2f Pa, Temperature: %.2f C",pressure, temperature);
+	HAL_Delay(250);
+}
 /* USER CODE END 0 */
 
 /**
@@ -149,13 +189,18 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
+  init_bmp280();
+
   HD44780_Init(2); // Inicializa el LCD con 2 líneas
   HD44780_Clear(); // Limpia el LCD
   HD44780_SetCursor(0, 0);   // Coloca el cursor en la primera línea
   HD44780_PrintStr("Sistema Iniciado"); // Mensaje inicial
-  //HAL_Delay(2000); // Pausa para que el mensaje sea visible
-  //HD44780_Clear(); // Limpia el LCD después del mensaje inicial
+  HAL_Delay(2000); // Pausa para que el mensaje sea visible
+  HD44780_Clear(); // Limpia el LCD después del mensaje inicial
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -163,10 +208,11 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  check_humidity_and_control_pump(); // Controla la bomba
-	  update_lcd(); // Actualiza el LCD
-	  HAL_Delay(500); // Pausa para evitar actualizaciones muy rápidas
-
+		read_bmp280();
+		check_humidity_and_control_pump();
+		update_lcd();
+		last_lcd_update = HAL_GetTick();
+		HAL_Delay(250);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -195,7 +241,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 50;
+  RCC_OscInitStruct.PLL.PLLN = 100;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -212,7 +258,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -301,6 +347,40 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief I2C2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C2_Init(void)
+{
+
+  /* USER CODE BEGIN I2C2_Init 0 */
+
+  /* USER CODE END I2C2_Init 0 */
+
+  /* USER CODE BEGIN I2C2_Init 1 */
+
+  /* USER CODE END I2C2_Init 1 */
+  hi2c2.Instance = I2C2;
+  hi2c2.Init.ClockSpeed = 100000;
+  hi2c2.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c2.Init.OwnAddress1 = 0;
+  hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c2.Init.OwnAddress2 = 0;
+  hi2c2.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c2.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C2_Init 2 */
+
+  /* USER CODE END I2C2_Init 2 */
 
 }
 

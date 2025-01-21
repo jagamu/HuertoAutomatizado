@@ -59,6 +59,10 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define Sensor_capacitivo_adc1_Pin GPIO_PIN_0
 #define Sensor_capacitivo_adc1_GPIO_Port GPIOA
+#define Stemp_I2C2_SCL_Pin GPIO_PIN_10
+#define Stemp_I2C2_SCL_GPIO_Port GPIOB
+#define Stemp_I2C2_SDA_Pin GPIO_PIN_11
+#define Stemp_I2C2_SDA_GPIO_Port GPIOB
 #define LCD_SCL_I2C1_Pin GPIO_PIN_6
 #define LCD_SCL_I2C1_GPIO_Port GPIOB
 #define LCD_SDA_I2C1_Pin GPIO_PIN_7
