@@ -48,18 +48,23 @@ ADC_HandleTypeDef hadc1;
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
+UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN PV */
 uint8_t button_state = 0; //Estado del botón
 uint8_t pump_state = 0; //Estado de la bomba
-uint32_t sensor_value = 0; //Valor leído del sensor
+uint32_t soil_humidity = 0; //Valor leído del sensor
 uint32_t humidity_threshold = 2000; //Umbral de humedad
+
 BMP280_HandleTypedef bmp280;
 float pressure, temperature;
 float humidity=0; //No usamos la humedad en nuestro sensor ambiental
 uint16_t size_bmp;
 uint8_t data_bmp[256];
+
 uint32_t last_lcd_update = 0;
 uint32_t last_bmp_update = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,6 +73,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -91,12 +97,12 @@ void check_humidity_and_control_pump() {
     // Leer el valor del ADC
     HAL_ADC_Start(&hadc1);
     if (HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY) == HAL_OK) {
-        sensor_value = HAL_ADC_GetValue(&hadc1);
+        soil_humidity = HAL_ADC_GetValue(&hadc1);
     }
     HAL_ADC_Stop(&hadc1);
 
     // Comparar con el umbral y actualizar el estado de la bomba
-    if (sensor_value > humidity_threshold || button_state == 1) { // Si la humedad es baja
+    if (soil_humidity > humidity_threshold || button_state == 1) { // Si la humedad es baja
         pump_state = 1; // Activar la bomba
     } else if (!button_state) { // Si el botón no está activo
         pump_state = 0; // Desactivar la bomba
@@ -113,7 +119,7 @@ void check_humidity_and_control_pump() {
 void update_lcd() {
     char line1[16]; // Línea 1 del LCD
     char line2[16]; // Línea 2 del LCD
-    uint32_t sensor_percent = 138.6228 - 0.0322 * sensor_value; // Conversión del valor del sensor a porcentaje
+    uint32_t humidity_percent = 138.6228 - 0.0322 * soil_humidity; // Conversión del valor del sensor a porcentaje
 
     // Mostrar estado de la bomba
     if (pump_state) {
@@ -123,7 +129,7 @@ void update_lcd() {
     }
 
     // Mostrar valor del sensor de humedad y presión
-    snprintf(line2, sizeof(line2), "H:%lu%% P:%.1f", sensor_percent, pressure / 100);
+    snprintf(line2, sizeof(line2), "H:%lu%% P:%.1f", humidity_percent, pressure / 100);
 
     // Actualizar el LCD
     HD44780_Clear(); // Limpia el LCD
@@ -156,6 +162,24 @@ void read_bmp280 () {
 	size_bmp = sprintf((char *)data_bmp,"Pressure: %.2f Pa, Temperature: %.2f C",pressure, temperature);
 	HAL_Delay(250);
 }
+
+void send_bluetooth_message(char *message) {
+    HAL_UART_Transmit(&huart1, (uint8_t *)message, strlen(message), HAL_MAX_DELAY);
+    HAL_Delay(500); // Espera para recibir respuesta
+}
+
+void send_sensor_data() {
+    char buffer[128];
+    float humidity_percent = 138.6228 - 0.0322 * soil_humidity; // Conversión del valor del sensor a porcentaje
+
+    // Formatear los datos correctamente
+    snprintf(buffer, sizeof(buffer),"Temp: %.2f C\nHumedad: %.1f%%\n Presion: %.2f hPa\n", temperature, humidity_percent, pressure / 100);
+
+    // Enviar la cadena por Bluetooth
+    send_bluetooth_message(buffer);
+}
+
+
 /* USER CODE END 0 */
 
 /**
@@ -166,7 +190,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	uint32_t last_bluetooth_update = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -190,8 +214,10 @@ int main(void)
   MX_ADC1_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   init_bmp280();
+
 
   HD44780_Init(2); // Inicializa el LCD con 2 líneas
   HD44780_Clear(); // Limpia el LCD
@@ -200,7 +226,6 @@ int main(void)
   HAL_Delay(2000); // Pausa para que el mensaje sea visible
   HD44780_Clear(); // Limpia el LCD después del mensaje inicial
 
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -208,12 +233,20 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-		read_bmp280();
-		check_humidity_and_control_pump();
-		update_lcd();
-		last_lcd_update = HAL_GetTick();
-		HAL_Delay(250);
+
     /* USER CODE BEGIN 3 */
+	  // Leer datos del BMP280 cada 1 segundo
+	  if (HAL_GetTick() - last_bluetooth_update >= 1000) {
+		  //send_bluetooth_message("Hola\n");
+
+		  send_sensor_data(); // Enviar datos por Bluetooth
+		  last_bluetooth_update = HAL_GetTick();
+	  }
+
+	  read_bmp280();
+	  check_humidity_and_control_pump();
+	  update_lcd();
+	  HAL_Delay(250);
   }
   /* USER CODE END 3 */
 }
@@ -381,6 +414,39 @@ static void MX_I2C2_Init(void)
   /* USER CODE BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
